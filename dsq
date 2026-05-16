@@ -219,11 +219,14 @@
             return nil
         end
 
-        function Library:Tween(Object, Properties, Info)
+        Library.TweenOptimized = LPH_JIT(function(Object, Properties, Info)
             local tween = TweenService:Create(Object, Info or TweenInfo.new(Library.TweeningSpeed, Library.EasingStyle, Enum.EasingDirection.InOut, 0, false, 0), Properties)
             tween:Play()
-            
             return tween
+        end)
+        
+        function Library:Tween(Object, Properties, Info)
+            return Library.TweenOptimized(Object, Properties, Info)
         end
         
         function Library:Fade(obj, prop, vis, speed)
@@ -7268,23 +7271,24 @@
         end
 
         function Esp:ConvertScreenPoint(world_position)
-            local ViewportSize = Camera.ViewportSize
-            local LocalPos = Camera.CFrame:pointToObjectSpace(world_position) 
+            return (LPH_JIT(function(pos)
+                local ViewportSize = Camera.ViewportSize
+                local LocalPos = Camera.CFrame:pointToObjectSpace(pos) 
 
-            local AspectRatio = ViewportSize.X / ViewportSize.Y
-            local HalfY = -LocalPos.Z * math.tan(math.rad(Camera.FieldOfView / 2))
-            local HalfX = AspectRatio * HalfY
+                local AspectRatio = ViewportSize.X / ViewportSize.Y
+                local HalfY = -LocalPos.Z * math.tan(math.rad(Camera.FieldOfView / 2))
+                local HalfX = AspectRatio * HalfY
+                
+                local FarPlaneCorner = Vector3.new(-HalfX, HalfY, LocalPos.Z)
+                local RelativePos = LocalPos - FarPlaneCorner
             
-            local FarPlaneCorner = Vector3.new(-HalfX, HalfY, LocalPos.Z)
-            local RelativePos = LocalPos - FarPlaneCorner
-        
-            local ScreenX = RelativePos.X / (HalfX * 2)
-            local ScreenY = -RelativePos.Y / (HalfY * 2)
-            
-            local OnScreen = -LocalPos.Z > 0 and ScreenX >= 0 and ScreenX <= 1 and ScreenY >= 0 and ScreenY <= 1
-            
-            -- returns in pixels as opposed to scale
-            return Vector3.new(ScreenX * ViewportSize.X, ScreenY * ViewportSize.Y, -LocalPos.Z), OnScreen
+                local ScreenX = RelativePos.X / (HalfX * 2)
+                local ScreenY = -RelativePos.Y / (HalfY * 2)
+                
+                local OnScreen = -LocalPos.Z > 0 and ScreenX >= 0 and ScreenX <= 1 and ScreenY >= 0 and ScreenY <= 1
+                
+                return Vector3.new(ScreenX * ViewportSize.X, ScreenY * ViewportSize.Y, -LocalPos.Z), OnScreen
+            end))(world_position)
         end
 
         function Esp:Connection(signal, callback)
@@ -7295,25 +7299,27 @@
         end
 
         function Esp:BoxSolve(torso)
-            if not torso then
-                return nil, nil, nil
-            end 
+            return (LPH_JIT(function(t)
+                if not t then
+                    return nil, nil, nil
+                end 
 
-            local ViewportTop = torso.Position + (torso.CFrame.UpVector * 1.8) + Camera.CFrame.UpVector
-            local ViewportBottom = torso.Position - (torso.CFrame.UpVector * 2.5) - Camera.CFrame.UpVector
-            local Distance = (torso.Position - Camera.CFrame.p).Magnitude
+                local ViewportTop = t.Position + (t.CFrame.UpVector * 1.8) + Camera.CFrame.UpVector
+                local ViewportBottom = t.Position - (t.CFrame.UpVector * 2.5) - Camera.CFrame.UpVector
+                local Distance = (t.Position - Camera.CFrame.p).Magnitude
 
-            local NewDistance = math.floor(Distance * 0.333)
+                local NewDistance = math.floor(Distance * 0.333)
 
-            local Top, TopIsRendered = Esp:ConvertScreenPoint(ViewportTop)
-            local Bottom, BottomIsRendered = Esp:ConvertScreenPoint(ViewportBottom)
-            
-            local Width = math.max(math.floor(math.abs(Top.X - Bottom.X)), 8)
-            local Height = math.max(math.floor(math.max(math.abs(Bottom.Y - Top.Y), Width / 2)), 12)
-            local BoxSize = Vector2.new(math.floor(math.max(Height / 1.5, Width)), Height)
-            local BoxPosition = Vector2.new(math.floor(Top.X * 0.5 + Bottom.X * 0.5 - BoxSize.X * 0.5), math.floor(math.min(Top.Y, Bottom.Y)))
-            
-            return BoxSize, BoxPosition, TopIsRendered, NewDistance 
+                local Top, TopIsRendered = Esp:ConvertScreenPoint(ViewportTop)
+                local Bottom, BottomIsRendered = Esp:ConvertScreenPoint(ViewportBottom)
+                
+                local Width = math.max(math.floor(math.abs(Top.X - Bottom.X)), 8)
+                local Height = math.max(math.floor(math.max(math.abs(Bottom.Y - Top.Y), Width / 2)), 12)
+                local BoxSize = Vector2.new(math.floor(math.max(Height / 1.5, Width)), Height)
+                local BoxPosition = Vector2.new(math.floor(Top.X * 0.5 + Bottom.X * 0.5 - BoxSize.X * 0.5), math.floor(math.min(Top.Y, Bottom.Y)))
+                
+                return BoxSize, BoxPosition, TopIsRendered, NewDistance 
+            end))(torso)
         end
         
         function Esp:Lerp(start, finish, t)
